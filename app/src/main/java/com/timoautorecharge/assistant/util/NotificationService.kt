@@ -18,6 +18,7 @@ import kotlinx.coroutines.runBlocking
 /**
  * Service responsible for creating and showing notifications.
  * Handles service status notifications and transaction event notifications.
+ * Supports smart notifications with categorization, priority levels, and grouping.
  */
 class NotificationService(
     private val context: Context,
@@ -27,9 +28,34 @@ class NotificationService(
         const val CHANNEL_ID_SERVICE = "auto_recharge_service"
         const val CHANNEL_ID_TRANSACTIONS = "transactions"
         const val CHANNEL_ID_SERVICE_STATUS = "service_status"
+        const val CHANNEL_ID_CRITICAL = "critical_alerts"
+        const val CHANNEL_ID_CONNECTION = "connection_status"
         const val NOTIFICATION_ID_SERVICE = 1
+        
         private var notificationId = 100
+        
+        // Enum for notification priority
+        enum class NotificationPriority {
+            LOW,
+            NORMAL,
+            HIGH,
+            CRITICAL
+        }
+        
+        // Enum for notification categories
+        enum class NotificationCategory {
+            SERVICE_STATUS,
+            TRANSACTION,
+            PAYMENT,
+            RECHARGE,
+            CONNECTION,
+            SYSTEM
+        }
     }
+    
+    // Add these maps for notification tracking
+    private val activeNotifications = mutableMapOf<String, Int>() // key -> notificationId
+    private val notificationGroups = mutableMapOf<NotificationCategory, MutableList<Int>>() // category -> list of notificationIds
     
     init {
         createNotificationChannels()
@@ -61,9 +87,33 @@ class NotificationService(
                 description = "Notifications for service status changes"
             }
             
+            val criticalChannel = NotificationChannel(
+                CHANNEL_ID_CRITICAL,
+                "Critical Alerts",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "High priority alerts requiring immediate attention"
+                enableVibration(true)
+                enableLights(true)
+            }
+            
+            val connectionChannel = NotificationChannel(
+                CHANNEL_ID_CONNECTION,
+                "Connection Status",
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = "Notifications for connection status"
+            }
+            
             val notificationManager = context.getSystemService(NotificationManager::class.java)
             notificationManager.createNotificationChannels(
-                listOf(serviceChannel, transactionsChannel, serviceStatusChannel)
+                listOf(
+                    serviceChannel, 
+                    transactionsChannel, 
+                    serviceStatusChannel,
+                    criticalChannel,
+                    connectionChannel
+                )
             )
         }
     }
@@ -96,15 +146,29 @@ class NotificationService(
      * @param statusMessage The status message to display
      */
     fun showServiceStatusNotification(serviceName: String, statusMessage: String) {
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID_SERVICE_STATUS)
-            .setContentTitle("$serviceName Status")
-            .setContentText(statusMessage)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .setAutoCancel(true)
-            .build()
-        
-        NotificationManagerCompat.from(context).notify(getNextNotificationId(), notification)
+        try {
+            val notification = NotificationCompat.Builder(context, CHANNEL_ID_SERVICE_STATUS)
+                .setContentTitle("$serviceName Status")
+                .setContentText(statusMessage)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setAutoCancel(true)
+                .build()
+            
+            NotificationManagerCompat.from(context).notify(getNextNotificationId(), notification)
+        } catch (e: Exception) {
+            // Log error but don't crash if notification permission is missing
+        }
+    }
+    
+    /**
+     * Notifies about a service status change.
+     * 
+     * @param serviceName The name of the service
+     * @param statusMessage The status message to display
+     */
+    suspend fun notifyServiceStatusChange(serviceName: String, statusMessage: String) {
+        showServiceStatusNotification(serviceName, statusMessage)
     }
     
     /**
@@ -167,6 +231,43 @@ class NotificationService(
     }
     
     /**
+     * Notifies about an unmatched payment.
+     * 
+     * @param amount The payment amount
+     * @param senderNumber The sender's phone number
+     */
+    fun notifyUnmatchedPayment(amount: Double, senderNumber: String) {
+        showUnmatchedPaymentNotification(amount, senderNumber)
+    }
+    
+    /**
+     * Notifies about a payment verification.
+     * 
+     * @param transaction The transaction that was verified
+     */
+    fun notifyPaymentVerified(transaction: Transaction) {
+        showPaymentVerifiedNotification(transaction)
+    }
+    
+    /**
+     * Shows a notification for manual intervention required.
+     * 
+     * @param transaction The transaction requiring intervention
+     * @param reason The reason for manual intervention
+     */
+    fun showManualInterventionRequiredNotification(transaction: Transaction, reason: String) {
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID_TRANSACTIONS)
+            .setContentTitle("Manual Intervention Required")
+            .setContentText("Transaction for Timo ID ${transaction.timoId} requires manual intervention: $reason")
+            .setSmallIcon(R.drawable.ic_notification)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .build()
+        
+        NotificationManagerCompat.from(context).notify(getNextNotificationId(), notification)
+    }
+    
+    /**
      * Shows a notification for a recharge start.
      * 
      * @param transaction The transaction being recharged
@@ -179,6 +280,24 @@ class NotificationService(
                 transaction.coinQuantity,
                 transaction.timoId
             ))
+            .setSmallIcon(R.drawable.ic_notification)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+            .build()
+        
+        NotificationManagerCompat.from(context).notify(getNextNotificationId(), notification)
+    }
+    
+    /**
+     * Notifies about a recharge start.
+     * 
+     * @param timoId The Timo ID being recharged
+     * @param coinQuantity The quantity of coins being recharged
+     */
+    fun notifyRechargeStarted(timoId: String, coinQuantity: Int) {
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID_TRANSACTIONS)
+            .setContentTitle("Recharge Started")
+            .setContentText("Starting recharge of $coinQuantity coins for Timo ID $timoId")
             .setSmallIcon(R.drawable.ic_notification)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
@@ -209,6 +328,24 @@ class NotificationService(
     }
     
     /**
+     * Notifies about a completed recharge.
+     * 
+     * @param timoId The Timo ID that was recharged
+     * @param coinQuantity The quantity of coins that was recharged
+     */
+    fun notifyRechargeCompleted(timoId: String, coinQuantity: Int) {
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID_TRANSACTIONS)
+            .setContentTitle("Recharge Completed")
+            .setContentText("Successfully recharged $coinQuantity coins for Timo ID $timoId")
+            .setSmallIcon(R.drawable.ic_notification)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .build()
+        
+        NotificationManagerCompat.from(context).notify(getNextNotificationId(), notification)
+    }
+    
+    /**
      * Shows a notification for a failed recharge.
      * 
      * @param transaction The transaction that failed
@@ -222,6 +359,25 @@ class NotificationService(
                 transaction.timoId,
                 errorMessage
             ))
+            .setSmallIcon(R.drawable.ic_notification)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .build()
+        
+        NotificationManagerCompat.from(context).notify(getNextNotificationId(), notification)
+    }
+    
+    /**
+     * Notifies about a failed recharge.
+     * 
+     * @param timoId The Timo ID that failed to recharge
+     * @param coinQuantity The quantity of coins that failed to recharge
+     * @param errorMessage The error message
+     */
+    fun notifyRechargeFailed(timoId: String, coinQuantity: Int, errorMessage: String) {
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID_TRANSACTIONS)
+            .setContentTitle("Recharge Failed")
+            .setContentText("Failed to recharge $coinQuantity coins for Timo ID $timoId: $errorMessage")
             .setSmallIcon(R.drawable.ic_notification)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
@@ -257,5 +413,127 @@ class NotificationService(
      */
     private fun getNextNotificationId(): Int {
         return notificationId++
+    }
+    
+    /**
+     * Shows a smart notification with proper categorization and priority.
+     * 
+     * @param title The notification title
+     * @param message The notification message
+     * @param category The notification category
+     * @param priority The notification priority
+     * @param key A unique key for this notification type (for updating)
+     * @param data Additional data for the notification
+     */
+    fun showSmartNotification(
+        title: String,
+        message: String,
+        category: NotificationCategory,
+        priority: NotificationPriority = NotificationPriority.NORMAL,
+        key: String? = null,
+        data: Map<String, String> = emptyMap()
+    ) {
+        val channelId = when {
+            priority == NotificationPriority.CRITICAL -> CHANNEL_ID_CRITICAL
+            category == NotificationCategory.CONNECTION -> CHANNEL_ID_CONNECTION
+            category == NotificationCategory.SERVICE_STATUS -> CHANNEL_ID_SERVICE_STATUS
+            category == NotificationCategory.TRANSACTION || 
+            category == NotificationCategory.PAYMENT || 
+            category == NotificationCategory.RECHARGE -> CHANNEL_ID_TRANSACTIONS
+            else -> CHANNEL_ID_SERVICE
+        }
+        
+        val notificationPriority = when (priority) {
+            NotificationPriority.LOW -> NotificationCompat.PRIORITY_LOW
+            NotificationPriority.NORMAL -> NotificationCompat.PRIORITY_DEFAULT
+            NotificationPriority.HIGH -> NotificationCompat.PRIORITY_HIGH
+            NotificationPriority.CRITICAL -> NotificationCompat.PRIORITY_MAX
+        }
+        
+        val builder = NotificationCompat.Builder(context, channelId)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setPriority(notificationPriority)
+            .setAutoCancel(true)
+        
+        // Add actions based on category
+        when (category) {
+            NotificationCategory.TRANSACTION -> {
+                val intent = Intent(context, MainActivity::class.java).apply {
+                    putExtra("SCREEN", "transactions")
+                }
+                val pendingIntent = PendingIntent.getActivity(
+                    context, 0, intent, PendingIntent.FLAG_IMMUTABLE
+                )
+                builder.setContentIntent(pendingIntent)
+            }
+            NotificationCategory.CONNECTION -> {
+                val intent = Intent(context, MainActivity::class.java).apply {
+                    putExtra("SCREEN", "settings")
+                }
+                val pendingIntent = PendingIntent.getActivity(
+                    context, 0, intent, PendingIntent.FLAG_IMMUTABLE
+                )
+                builder.setContentIntent(pendingIntent)
+            }
+            else -> {
+                val intent = Intent(context, MainActivity::class.java)
+                val pendingIntent = PendingIntent.getActivity(
+                    context, 0, intent, PendingIntent.FLAG_IMMUTABLE
+                )
+                builder.setContentIntent(pendingIntent)
+            }
+        }
+        
+        // Use notification ID from key or get a new one
+        val notificationId = if (key != null && activeNotifications.containsKey(key)) {
+            activeNotifications[key]!!
+        } else {
+            val newId = getNextNotificationId()
+            if (key != null) {
+                activeNotifications[key] = newId
+            }
+            
+            // Add to category group
+            notificationGroups.getOrPut(category) { mutableListOf() }.add(newId)
+            
+            newId
+        }
+        
+        NotificationManagerCompat.from(context).notify(notificationId, builder.build())
+    }
+    
+    /**
+     * Clears notifications by category.
+     * 
+     * @param category The category of notifications to clear
+     */
+    fun clearNotificationsByCategory(category: NotificationCategory) {
+        val notificationManager = NotificationManagerCompat.from(context)
+        notificationGroups[category]?.forEach { id ->
+            notificationManager.cancel(id)
+        }
+        notificationGroups[category]?.clear()
+    }
+    
+    /**
+     * Updates an existing notification.
+     * 
+     * @param key The key of the notification to update
+     * @param title The new title
+     * @param message The new message
+     */
+    fun updateNotification(key: String, title: String, message: String) {
+        if (activeNotifications.containsKey(key)) {
+            val notificationId = activeNotifications[key]!!
+            val builder = NotificationCompat.Builder(context, CHANNEL_ID_TRANSACTIONS)
+                .setContentTitle(title)
+                .setContentText(message)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setAutoCancel(true)
+            
+            NotificationManagerCompat.from(context).notify(notificationId, builder.build())
+        }
     }
 }

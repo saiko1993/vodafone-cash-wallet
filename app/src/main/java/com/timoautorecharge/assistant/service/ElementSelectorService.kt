@@ -300,9 +300,10 @@ class ElementSelectorService : Service() {
     }
     
     private suspend fun updateSettings(elementInfo: UiElementInfo) {
+        // Get existing settings
         val settings = settingsRepository.getSettings().first()
         
-        // Update the appropriate setting based on the target element key
+        // Update legacy settings for backward compatibility
         val updatedSettings = when (targetElementKey) {
             "rechargeButtonId" -> settings.copy(rechargeButtonId = elementInfo.elementId)
             "timoIdInputId" -> settings.copy(timoIdInputId = elementInfo.elementId)
@@ -311,7 +312,31 @@ class ElementSelectorService : Service() {
             else -> settings
         }
         
-        settingsRepository.updateSettings(updatedSettings)
+        // Update settings if needed
+        if (updatedSettings != settings) {
+            settingsRepository.updateSettings(updatedSettings)
+        }
+        
+        // Always save to the registry with the target key
+        try {
+            val uiElementRegistryRepository = org.koin.core.context.GlobalContext.get().get<com.timoautorecharge.assistant.data.repository.UiElementRegistryRepository>()
+            uiElementRegistryRepository.saveElement(
+                keyName = targetElementKey,
+                elementInfo = elementInfo.copy(keyName = targetElementKey),
+                appName = elementInfo.packageName,
+                screenName = "",
+                description = ""
+            )
+        } catch (e: Exception) {
+            logRepository.addLog(
+                com.timoautorecharge.assistant.data.model.Log(
+                    message = "Failed to save element to registry: ${e.message}",
+                    timestamp = System.currentTimeMillis(),
+                    level = com.timoautorecharge.assistant.data.model.Log.Level.ERROR,
+                    source = "ElementSelectorService"
+                )
+            )
+        }
     }
     
     override fun onDestroy() {

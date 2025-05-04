@@ -2,12 +2,15 @@ package com.timoautorecharge.assistant.service
 
 import android.accessibilityservice.AccessibilityService
 import android.content.Intent
+import android.graphics.Rect
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import com.timoautorecharge.assistant.data.model.Log
 import com.timoautorecharge.assistant.data.model.LogType
+import com.timoautorecharge.assistant.data.model.UiElementInfo
 import com.timoautorecharge.assistant.data.repository.LogRepository
 import com.timoautorecharge.assistant.data.repository.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
@@ -17,7 +20,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import org.koin.java.KoinJavaComponent.inject
+import kotlin.coroutines.resume
 
 /**
  * Accessibility service for interacting with WhatsApp UI.
@@ -44,16 +49,60 @@ class WhatsAppAccessibilityService : AccessibilityService() {
     private val _serviceStatus = MutableStateFlow(ServiceStatus.INACTIVE)
     val serviceStatus: StateFlow<ServiceStatus> = _serviceStatus.asStateFlow()
     
+    companion object {
+        private var captureCallback: ((UiElementInfo?) -> Unit)? = null
+        private var captureRect: Rect? = null
+        private var captureElementType: UiElementInfo.ElementType? = null
+        
+        /**
+         * Captures an element at the specified screen location.
+         *
+         * @param rect The screen coordinates of the element to capture
+         * @param elementType The type of element to capture (button or input field)
+         * @return The captured element info or null if no element was found
+         */
+        suspend fun captureElementAtLocation(
+            rect: Rect,
+            elementType: UiElementInfo.ElementType
+        ): UiElementInfo? {
+            return suspendCancellableCoroutine { continuation ->
+                captureCallback = { result ->
+                    captureCallback = null
+                    captureRect = null
+                    captureElementType = null
+                    continuation.resume(result)
+                }
+                captureRect = rect
+                captureElementType = elementType
+                
+                // Set a timeout
+                Handler(Looper.getMainLooper()).postDelayed({
+                    if (captureCallback != null) {
+                        captureCallback?.invoke(null)
+                    }
+                }, 5000)
+            }
+        }
+    }
+    
     override fun onServiceConnected() {
         super.onServiceConnected()
         _serviceStatus.value = ServiceStatus.ACTIVE
-        logRepository.logInfo(
-            LogType.ACCESSIBILITY,
-            "WhatsApp Accessibility Service connected"
-        )
+        scope.launch {
+            logRepository.logInfo(
+                message = "WhatsApp Accessibility Service connected",
+                source = "WhatsAppAccessibilityService"
+            )
+        }
     }
     
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
+        // Check if we're in element capture mode
+        if (captureRect != null && captureElementType != null) {
+            processElementCapture()
+            return
+        }
+        
         if (currentStep == WhatsAppStep.IDLE) return
         
         val packageName = event.packageName?.toString() ?: return
@@ -70,10 +119,12 @@ class WhatsAppAccessibilityService : AccessibilityService() {
     
     override fun onInterrupt() {
         _serviceStatus.value = ServiceStatus.INACTIVE
-        logRepository.logWarning(
-            LogType.ACCESSIBILITY,
-            "WhatsApp Accessibility Service interrupted"
-        )
+        scope.launch {
+            logRepository.logWarning(
+                message = "WhatsApp Accessibility Service interrupted",
+                source = "WhatsAppAccessibilityService"
+            )
+        }
     }
     
     override fun onDestroy() {
@@ -110,21 +161,21 @@ class WhatsAppAccessibilityService : AccessibilityService() {
                     }, 1000)
                     
                     logRepository.logInfo(
-                        LogType.ACCESSIBILITY,
-                        "Launched WhatsApp to send message to $phoneNumber"
+                        message = "Launched WhatsApp to send message to $phoneNumber",
+                        source = "WhatsAppAccessibilityService"
                     )
                 } else {
                     logRepository.logError(
-                        LogType.ACCESSIBILITY,
-                        "Failed to launch WhatsApp: Package $whatsAppPackageName not found"
+                        message = "Failed to launch WhatsApp: Package $whatsAppPackageName not found",
+                        source = "WhatsAppAccessibilityService"
                     )
                     operationCallback?.invoke(false)
                     resetState()
                 }
             } catch (e: Exception) {
                 logRepository.logError(
-                    LogType.ACCESSIBILITY,
-                    "Error starting WhatsApp message: ${e.message}"
+                    message = "Error starting WhatsApp message: ${e.message}",
+                    source = "WhatsAppAccessibilityService"
                 )
                 operationCallback?.invoke(false)
                 resetState()
@@ -139,7 +190,8 @@ class WhatsAppAccessibilityService : AccessibilityService() {
      * @param phoneNumber The phone number to send the message to
      * @param message The message to send
      */
-    fun sendWhatsAppMessageViaDeepLink(phoneNumber: String, message: String) {
+    fun sendWhatsAppMessageViaDeepLink(phoneNumber: String, message: String, callback: (Boolean) -> Unit) {
+        var success = false
         try {
             // Format phone number (remove any non-digit characters and ensure it has country code)
             val formattedNumber = phoneNumber.replace(Regex("\\D"), "")
@@ -155,15 +207,19 @@ class WhatsAppAccessibilityService : AccessibilityService() {
             
             startActivity(intent)
             
-            logRepository.logInfo(
-                LogType.ACCESSIBILITY,
-                "Sent WhatsApp message via deep link to $phoneNumber"
-            )
+            scope.launch {
+                logRepository.logInfo(
+                    message = "Sent WhatsApp message via deep link to $phoneNumber",
+                    source = "WhatsAppAccessibilityService"
+                )
+            }
         } catch (e: Exception) {
-            logRepository.logError(
-                LogType.ACCESSIBILITY,
-                "Error sending WhatsApp message via deep link: ${e.message}"
-            )
+            scope.launch {
+                logRepository.logError(
+                    message = "Error sending WhatsApp message via deep link: ${e.message}",
+                    source = "WhatsAppAccessibilityService"
+                )
+            }
         }
     }
     
@@ -214,7 +270,9 @@ class WhatsAppAccessibilityService : AccessibilityService() {
             }, 1000)
         } else {
             // If we can't find the search button, try the alternative method
-            sendWhatsAppMessageViaDeepLink(phoneNumber, currentMessage ?: "")
+            sendWhatsAppMessageViaDeepLink(phoneNumber, currentMessage ?: "") { success ->
+                operationCallback?.invoke(success)
+            }
             resetState()
         }
     }
@@ -260,10 +318,12 @@ class WhatsAppAccessibilityService : AccessibilityService() {
         if (sendButton != null && sendButton.isClickable) {
             sendButton.performAction(AccessibilityNodeInfo.ACTION_CLICK)
             
-            logRepository.logInfo(
-                LogType.ACCESSIBILITY,
-                "Message sent to $currentPhoneNumber"
-            )
+            scope.launch {
+                logRepository.logInfo(
+                    message = "Message sent to $currentPhoneNumber",
+                    source = "WhatsAppAccessibilityService"
+                )
+            }
             
             // Operation completed successfully
             operationCallback?.invoke(true)
@@ -356,28 +416,34 @@ class WhatsAppAccessibilityService : AccessibilityService() {
         if (retryCount < 3) {
             retryCount++
             
-            logRepository.logWarning(
-                LogType.ACCESSIBILITY,
-                "$errorMessage, retrying (attempt $retryCount of 3)"
-            )
+            scope.launch {
+                logRepository.logWarning(
+                    message = "$errorMessage, retrying (attempt $retryCount of 3)",
+                    source = "WhatsAppAccessibilityService"
+                )
+            }
             
             // Retry after delay
             handler.postDelayed({
                 // Keep the same step for retry
             }, 1000)
         } else {
-            logRepository.logError(
-                LogType.ACCESSIBILITY,
-                "$errorMessage, max retries exceeded"
-            )
+            scope.launch {
+                logRepository.logError(
+                    message = "$errorMessage, max retries exceeded",
+                    source = "WhatsAppAccessibilityService"
+                )
+            }
             
             // Try alternative method
             if (currentPhoneNumber != null && currentMessage != null) {
-                sendWhatsAppMessageViaDeepLink(currentPhoneNumber!!, currentMessage!!)
+                sendWhatsAppMessageViaDeepLink(currentPhoneNumber!!, currentMessage!!) { success ->
+                    operationCallback?.invoke(success)
+                }
+            } else {
+                // Operation failed
+                operationCallback?.invoke(false)
             }
-            
-            // Operation failed
-            operationCallback?.invoke(false)
             resetState()
         }
     }
@@ -410,5 +476,94 @@ class WhatsAppAccessibilityService : AccessibilityService() {
     enum class ServiceStatus {
         ACTIVE,
         INACTIVE
+    }
+    
+    /**
+     * Process element capture request.
+     * Searches for UI elements at the specified screen location.
+     */
+    private fun processElementCapture() {
+        val rect = captureRect ?: return
+        val elementType = captureElementType ?: return
+        val callback = captureCallback ?: return
+        
+        val rootNode = rootInActiveWindow ?: return
+        val node = findNodeAtLocation(rootNode, rect)
+        
+        if (node != null) {
+            val elementInfo = createUiElementInfo(node, elementType)
+            callback(elementInfo)
+            
+            scope.launch {
+                logRepository.addLog(
+                    Log(
+                        message = "Captured UI element: ${elementInfo.elementId} (${elementInfo.elementType})",
+                        timestamp = System.currentTimeMillis(),
+                        level = Log.Level.INFO,
+                        source = "WhatsAppAccessibilityService"
+                    )
+                )
+            }
+        }
+    }
+    
+    /**
+     * Find a node at the specified screen location.
+     *
+     * @param root The root node to search from
+     * @param rect The screen coordinates to search within
+     * @return The node at the specified location, or null if not found
+     */
+    private fun findNodeAtLocation(root: AccessibilityNodeInfo, rect: Rect): AccessibilityNodeInfo? {
+        try {
+            val nodeRect = Rect()
+            root.getBoundsInScreen(nodeRect)
+            
+            // Check if this node is within the selection rectangle
+            if (rect.contains(nodeRect) || nodeRect.contains(rect)) {
+                return root
+            }
+            
+            // Check child nodes
+            for (i in 0 until root.childCount) {
+                val child = root.getChild(i) ?: continue
+                val result = findNodeAtLocation(child, rect)
+                if (result != null) {
+                    return result
+                }
+            }
+            
+            return null
+        } catch (e: Exception) {
+            scope.launch {
+                logRepository.logError(
+                    message = "Error finding node at location: ${e.message}",
+                    source = "WhatsAppAccessibilityService"
+                )
+            }
+            return null
+        }
+    }
+    
+    /**
+     * Create a UiElementInfo object from an AccessibilityNodeInfo.
+     *
+     * @param node The node to create the element info from
+     * @param elementType The type of element (button or input field)
+     * @return The created UiElementInfo object
+     */
+    private fun createUiElementInfo(node: AccessibilityNodeInfo, elementType: UiElementInfo.ElementType): UiElementInfo {
+        val bounds = Rect()
+        node.getBoundsInScreen(bounds)
+        
+        return UiElementInfo(
+            elementId = node.viewIdResourceName ?: "",
+            packageName = node.packageName?.toString() ?: "",
+            elementType = elementType,
+            contentDescription = node.contentDescription?.toString() ?: "",
+            text = node.text?.toString() ?: "",
+            bounds = bounds,
+            className = node.className?.toString() ?: ""
+        )
     }
 }

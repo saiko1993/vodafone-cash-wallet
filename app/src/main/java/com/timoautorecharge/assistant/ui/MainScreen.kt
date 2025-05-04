@@ -21,9 +21,11 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.timoautorecharge.assistant.R
+import com.timoautorecharge.assistant.ui.connection.ConnectionStatusScreen
 import com.timoautorecharge.assistant.ui.dashboard.DashboardScreen
 import com.timoautorecharge.assistant.ui.settings.SettingsScreen
 import com.timoautorecharge.assistant.ui.transactions.TransactionsScreen
+import com.timoautorecharge.assistant.ui.uielements.UiElementsScreen
 import org.koin.androidx.compose.getViewModel
 
 @Composable
@@ -89,13 +91,29 @@ fun MainScreen() {
             modifier = Modifier.padding(innerPadding)
         ) {
             composable("dashboard") {
-                DashboardScreen(viewModel = getViewModel())
+                DashboardScreen(
+                    navigateToUiElements = { navController.navigate("ui_elements") },
+                    navigateToConnectionStatus = { navController.navigate("connection_status") },
+                    viewModel = getViewModel()
+                )
             }
             composable("transactions") {
                 TransactionsScreen(viewModel = getViewModel())
             }
             composable("settings") {
                 SettingsScreen(viewModel = getViewModel())
+            }
+            composable("ui_elements") {
+                UiElementsScreen(
+                    navigateBack = { navController.navigateUp() },
+                    viewModel = getViewModel()
+                )
+            }
+            composable("connection_status") {
+                ConnectionStatusScreen(
+                    navigateBack = { navController.navigateUp() },
+                    viewModel = getViewModel()
+                )
             }
         }
     }

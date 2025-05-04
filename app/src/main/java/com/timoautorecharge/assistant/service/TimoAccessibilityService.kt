@@ -2,13 +2,16 @@ package com.timoautorecharge.assistant.service
 
 import android.accessibilityservice.AccessibilityService
 import android.content.Intent
+import android.graphics.Rect
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.timoautorecharge.assistant.R
+import com.timoautorecharge.assistant.data.model.Log
 import com.timoautorecharge.assistant.data.model.LogType
+import com.timoautorecharge.assistant.data.model.UiElementInfo
 import com.timoautorecharge.assistant.data.repository.LogRepository
 import com.timoautorecharge.assistant.data.repository.SettingsRepository
 import com.timoautorecharge.assistant.util.NotificationService
@@ -19,8 +22,11 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import org.koin.java.KoinJavaComponent.inject
+import kotlin.coroutines.resume
 
 /**
  * Accessibility service for interacting with the Timo app.
@@ -34,6 +40,7 @@ class TimoAccessibilityService : AccessibilityService() {
     private val navigationTemplateManager: TimoNavigationTemplateManager by inject(TimoNavigationTemplateManager::class.java)
     
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val context = this
     private val handler = Handler(Looper.getMainLooper())
     
     // Callback for recharge operations
@@ -50,23 +57,71 @@ class TimoAccessibilityService : AccessibilityService() {
     private val _serviceStatus = MutableStateFlow(ServiceStatus.INACTIVE)
     val serviceStatus: StateFlow<ServiceStatus> = _serviceStatus.asStateFlow()
     
+    companion object {
+        private var captureCallback: ((UiElementInfo?) -> Unit)? = null
+        private var captureRect: Rect? = null
+        private var captureElementType: UiElementInfo.ElementType? = null
+        
+        /**
+         * Captures an element at the specified screen location.
+         *
+         * @param rect The screen coordinates of the element to capture
+         * @param elementType The type of element to capture (button or input field)
+         * @return The captured element info or null if no element was found
+         */
+        suspend fun captureElementAtLocation(
+            rect: Rect,
+            elementType: UiElementInfo.ElementType
+        ): UiElementInfo? {
+            return suspendCancellableCoroutine { continuation ->
+                captureCallback = { result ->
+                    captureCallback = null
+                    captureRect = null
+                    captureElementType = null
+                    continuation.resume(result)
+                }
+                captureRect = rect
+                captureElementType = elementType
+                
+                // Set a timeout
+                Handler(Looper.getMainLooper()).postDelayed({
+                    if (captureCallback != null) {
+                        captureCallback?.invoke(null)
+                    }
+                }, 5000)
+            }
+        }
+    }
+    
     override fun onServiceConnected() {
         super.onServiceConnected()
         _serviceStatus.value = ServiceStatus.ACTIVE
         
-        logRepository.logInfo(
-            LogType.ACCESSIBILITY,
-            "Timo Accessibility Service connected"
-        )
-        
-        // Notify service status change
-        notificationService.notifyServiceStatusChange(
-            "Timo Service",
-            context.getString(R.string.timo_service_active)
-        )
+        scope.launch {
+            logRepository.addLog(
+                Log(
+                    message = "Timo Accessibility Service connected",
+                    timestamp = System.currentTimeMillis(),
+                    level = Log.Level.INFO,
+                    source = "TimoAccessibilityService"
+                )
+            )
+            
+            // Notify service status change
+            notificationService.notifyServiceStatusChange(
+                "Timo Service",
+                context.getString(R.string.timo_service_active)
+            )
+        }
     }
     
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
+        // Check if we're in element capture mode
+        if (captureRect != null && captureElementType != null) {
+            processElementCapture()
+            return
+        }
+        
         if (currentStep == RechargeStep.IDLE) return
         
         val packageName = event.packageName?.toString() ?: return
@@ -90,27 +145,36 @@ class TimoAccessibilityService : AccessibilityService() {
     override fun onInterrupt() {
         _serviceStatus.value = ServiceStatus.INACTIVE
         
-        logRepository.logWarning(
-            LogType.ACCESSIBILITY,
-            "Timo Accessibility Service interrupted"
-        )
-        
-        // Notify service status change
-        notificationService.notifyServiceStatusChange(
-            "Timo Service",
-            context.getString(R.string.timo_service_inactive)
-        )
+        scope.launch {
+            logRepository.addLog(
+                Log(
+                    message = "Timo Accessibility Service interrupted",
+                    timestamp = System.currentTimeMillis(),
+                    level = Log.Level.WARNING,
+                    source = "TimoAccessibilityService",
+                    type = LogType.ACCESSIBILITY
+                )
+            )
+            
+            // Notify service status change
+            notificationService.notifyServiceStatusChange(
+                "Timo Service",
+                context.getString(R.string.timo_service_inactive)
+            )
+        }
     }
     
     override fun onDestroy() {
         super.onDestroy()
         _serviceStatus.value = ServiceStatus.INACTIVE
         
-        // Notify service status change
-        notificationService.notifyServiceStatusChange(
-            "Timo Service",
-            context.getString(R.string.timo_service_inactive)
-        )
+        scope.launch {
+            // Notify service status change
+            notificationService.notifyServiceStatusChange(
+                "Timo Service",
+                context.getString(R.string.timo_service_inactive)
+            )
+        }
     }
     
     /**
@@ -124,9 +188,14 @@ class TimoAccessibilityService : AccessibilityService() {
         scope.launch {
             try {
                 if (_serviceStatus.value != ServiceStatus.ACTIVE) {
-                    logRepository.logError(
-                        LogType.ACCESSIBILITY,
-                        "Cannot perform recharge: Timo Accessibility Service is not active"
+                    logRepository.addLog(
+                        Log(
+                            message = "Cannot perform recharge: Timo Accessibility Service is not active",
+                            timestamp = System.currentTimeMillis(),
+                            level = Log.Level.ERROR,
+                            source = "TimoAccessibilityService",
+                            type = LogType.ACCESSIBILITY
+                        )
                     )
                     callback(false)
                     return@launch
@@ -158,22 +227,34 @@ class TimoAccessibilityService : AccessibilityService() {
                     // Notify admin about recharge start
                     notificationService.notifyRechargeStarted(timoId, coinQuantity)
                     
-                    logRepository.logInfo(
-                        LogType.ACCESSIBILITY,
-                        "Launched Timo app for recharge: ID=$timoId, Coins=$coinQuantity"
+                    logRepository.addLog(
+                        Log(
+                            message = "Launched Timo app for recharge: ID=$timoId, Coins=$coinQuantity",
+                            timestamp = System.currentTimeMillis(),
+                            level = Log.Level.INFO,
+                            source = "TimoAccessibilityService"
+                        )
                     )
                 } else {
-                    logRepository.logError(
-                        LogType.ACCESSIBILITY,
-                        "Failed to launch Timo app: Package ${settings.timoPackageName} not found"
+                    logRepository.addLog(
+                        Log(
+                            message = "Failed to launch Timo app: Package ${settings.timoPackageName} not found",
+                            timestamp = System.currentTimeMillis(),
+                            level = Log.Level.ERROR,
+                            source = "TimoAccessibilityService"
+                        )
                     )
                     rechargeCallback?.invoke(false)
                     resetState()
                 }
             } catch (e: Exception) {
-                logRepository.logError(
-                    LogType.ACCESSIBILITY,
-                    "Error starting recharge: ${e.message}"
+                logRepository.addLog(
+                    Log(
+                        message = "Error starting recharge: ${e.message}",
+                        timestamp = System.currentTimeMillis(),
+                        level = Log.Level.ERROR,
+                        source = "TimoAccessibilityService"
+                    )
                 )
                 rechargeCallback?.invoke(false)
                 resetState()
@@ -199,9 +280,13 @@ class TimoAccessibilityService : AccessibilityService() {
                         if (node != null && node.isClickable) {
                             node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
                             
-                            logRepository.logInfo(
-                                LogType.ACCESSIBILITY,
-                                "Performed additional step: ${step.name}"
+                            logRepository.addLog(
+                                Log(
+                                    message = "Performed additional step: ${step.name}",
+                                    timestamp = System.currentTimeMillis(),
+                                    level = Log.Level.INFO,
+                                    source = "TimoAccessibilityService"
+                                )
                             )
                             
                             // Move to next step after delay
@@ -231,9 +316,13 @@ class TimoAccessibilityService : AccessibilityService() {
                             )
                             input.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
                             
-                            logRepository.logInfo(
-                                LogType.ACCESSIBILITY,
-                                "Performed additional step: ${step.name}"
+                            logRepository.addLog(
+                                Log(
+                                    message = "Performed additional step: ${step.name}",
+                                    timestamp = System.currentTimeMillis(),
+                                    level = Log.Level.INFO,
+                                    source = "TimoAccessibilityService"
+                                )
                             )
                             
                             // Move to next step after delay
@@ -248,9 +337,13 @@ class TimoAccessibilityService : AccessibilityService() {
                         }
                     }
                     "wait" -> {
-                        logRepository.logInfo(
-                            LogType.ACCESSIBILITY,
-                            "Performing wait step: ${step.name}"
+                        logRepository.addLog(
+                            Log(
+                                message = "Performing wait step: ${step.name}",
+                                timestamp = System.currentTimeMillis(),
+                                level = Log.Level.INFO,
+                                source = "TimoAccessibilityService"
+                            )
                         )
                         
                         // Just wait for the specified delay
@@ -262,9 +355,13 @@ class TimoAccessibilityService : AccessibilityService() {
                         }, step.delayAfterMs)
                     }
                     else -> {
-                        logRepository.logWarning(
-                            LogType.ACCESSIBILITY,
-                            "Unknown step type: ${step.type} for step: ${step.name}"
+                        logRepository.addLog(
+                            Log(
+                                message = "Unknown step type: ${step.type} for step: ${step.name}",
+                                timestamp = System.currentTimeMillis(),
+                                level = Log.Level.WARNING,
+                                source = "TimoAccessibilityService"
+                            )
                         )
                         
                         // Skip this step
@@ -300,10 +397,16 @@ class TimoAccessibilityService : AccessibilityService() {
                 }, settings.navigationDelayMs)
             }
             
-            logRepository.logInfo(
-                LogType.ACCESSIBILITY,
-                "Clicked recharge button"
-            )
+            scope.launch {
+                logRepository.addLog(
+                    Log(
+                        message = "Clicked recharge button",
+                        timestamp = System.currentTimeMillis(),
+                        level = Log.Level.INFO,
+                        source = "TimoAccessibilityService"
+                    )
+                )
+            }
         } else {
             handleNavigationFailure("Could not find or click recharge button")
         }
@@ -335,10 +438,16 @@ class TimoAccessibilityService : AccessibilityService() {
                 }, settings.navigationDelayMs)
             }
             
-            logRepository.logInfo(
-                LogType.ACCESSIBILITY,
-                "Entered Timo ID: $timoId"
-            )
+            scope.launch {
+                logRepository.addLog(
+                    Log(
+                        message = "Entered Timo ID: $timoId",
+                        timestamp = System.currentTimeMillis(),
+                        level = Log.Level.INFO,
+                        source = "TimoAccessibilityService"
+                    )
+                )
+            }
         } else {
             handleNavigationFailure("Could not find Timo ID input field")
         }
@@ -370,10 +479,16 @@ class TimoAccessibilityService : AccessibilityService() {
                 }, settings.navigationDelayMs)
             }
             
-            logRepository.logInfo(
-                LogType.ACCESSIBILITY,
-                "Entered coin quantity: $coinQuantity"
-            )
+            scope.launch {
+                logRepository.addLog(
+                    Log(
+                        message = "Entered coin quantity: $coinQuantity",
+                        timestamp = System.currentTimeMillis(),
+                        level = Log.Level.INFO,
+                        source = "TimoAccessibilityService"
+                    )
+                )
+            }
         } else {
             handleNavigationFailure("Could not find coin quantity input field")
         }
@@ -391,10 +506,16 @@ class TimoAccessibilityService : AccessibilityService() {
         if (button != null && button.isClickable) {
             button.performAction(AccessibilityNodeInfo.ACTION_CLICK)
             
-            logRepository.logInfo(
-                LogType.ACCESSIBILITY,
-                "Clicked confirm button, recharge completed"
-            )
+            scope.launch {
+                logRepository.addLog(
+                    Log(
+                        message = "Clicked confirm button, recharge completed",
+                        timestamp = System.currentTimeMillis(),
+                        level = Log.Level.INFO,
+                        source = "TimoAccessibilityService"
+                    )
+                )
+            }
             
             // Notify admin about successful recharge
             val timoId = currentTimoId
@@ -423,10 +544,16 @@ class TimoAccessibilityService : AccessibilityService() {
             val nodes = root.findAccessibilityNodeInfosByViewId(viewId)
             return if (nodes.isNotEmpty()) nodes[0] else null
         } catch (e: Exception) {
-            logRepository.logError(
-                LogType.ACCESSIBILITY,
-                "Error finding node by ID: ${e.message}"
-            )
+            scope.launch {
+                logRepository.addLog(
+                    Log(
+                        message = "Error finding node by ID: ${e.message}",
+                        timestamp = System.currentTimeMillis(),
+                        level = Log.Level.ERROR,
+                        source = "TimoAccessibilityService"
+                    )
+                )
+            }
             return null
         }
     }
@@ -466,9 +593,13 @@ class TimoAccessibilityService : AccessibilityService() {
             if (retryCount < settings.maxNavigationRetries) {
                 retryCount++
                 
-                logRepository.logWarning(
-                    LogType.ACCESSIBILITY,
-                    "$errorMessage, retrying (attempt $retryCount of ${settings.maxNavigationRetries})"
+                logRepository.addLog(
+                    Log(
+                        message = "$errorMessage, retrying (attempt $retryCount of ${settings.maxNavigationRetries})",
+                        timestamp = System.currentTimeMillis(),
+                        level = Log.Level.WARNING,
+                        source = "TimoAccessibilityService"
+                    )
                 )
                 
                 // Retry after delay
@@ -476,9 +607,13 @@ class TimoAccessibilityService : AccessibilityService() {
                     // Keep the same step for retry
                 }, settings.navigationDelayMs)
             } else {
-                logRepository.logError(
-                    LogType.ACCESSIBILITY,
-                    "$errorMessage, max retries exceeded"
+                logRepository.addLog(
+                    Log(
+                        message = "$errorMessage, max retries exceeded",
+                        timestamp = System.currentTimeMillis(),
+                        level = Log.Level.ERROR,
+                        source = "TimoAccessibilityService"
+                    )
                 )
                 
                 // Notify admin about recharge failure
@@ -526,5 +661,98 @@ class TimoAccessibilityService : AccessibilityService() {
     enum class ServiceStatus {
         ACTIVE,
         INACTIVE
+    }
+    
+    /**
+     * Process element capture request.
+     * Searches for UI elements at the specified screen location.
+     */
+    private fun processElementCapture() {
+        val rect = captureRect ?: return
+        val elementType = captureElementType ?: return
+        val callback = captureCallback ?: return
+        
+        val rootNode = rootInActiveWindow ?: return
+        val node = findNodeAtLocation(rootNode, rect)
+        
+        if (node != null) {
+            val elementInfo = createUiElementInfo(node, elementType)
+            callback(elementInfo)
+            
+            scope.launch {
+                logRepository.addLog(
+                    Log(
+                        message = "Captured UI element: ${elementInfo.elementId} (${elementInfo.elementType})",
+                        timestamp = System.currentTimeMillis(),
+                        level = Log.Level.INFO,
+                        source = "TimoAccessibilityService"
+                    )
+                )
+            }
+        }
+    }
+    
+    /**
+     * Find a node at the specified screen location.
+     *
+     * @param root The root node to search from
+     * @param rect The screen coordinates to search within
+     * @return The node at the specified location, or null if not found
+     */
+    private fun findNodeAtLocation(root: AccessibilityNodeInfo, rect: Rect): AccessibilityNodeInfo? {
+        try {
+            val nodeRect = Rect()
+            root.getBoundsInScreen(nodeRect)
+            
+            // Check if this node is within the selection rectangle
+            if (rect.contains(nodeRect) || nodeRect.contains(rect)) {
+                return root
+            }
+            
+            // Check child nodes
+            for (i in 0 until root.childCount) {
+                val child = root.getChild(i) ?: continue
+                val result = findNodeAtLocation(child, rect)
+                if (result != null) {
+                    return result
+                }
+            }
+            
+            return null
+        } catch (e: Exception) {
+            scope.launch {
+                logRepository.addLog(
+                    Log(
+                        message = "Error finding node at location: ${e.message}",
+                        timestamp = System.currentTimeMillis(),
+                        level = Log.Level.ERROR,
+                        source = "TimoAccessibilityService"
+                    )
+                )
+            }
+            return null
+        }
+    }
+    
+    /**
+     * Create a UiElementInfo object from an AccessibilityNodeInfo.
+     *
+     * @param node The node to create the element info from
+     * @param elementType The type of element (button or input field)
+     * @return The created UiElementInfo object
+     */
+    private fun createUiElementInfo(node: AccessibilityNodeInfo, elementType: UiElementInfo.ElementType): UiElementInfo {
+        val bounds = Rect()
+        node.getBoundsInScreen(bounds)
+        
+        return UiElementInfo(
+            elementId = node.viewIdResourceName ?: "",
+            packageName = node.packageName?.toString() ?: "",
+            elementType = elementType,
+            contentDescription = node.contentDescription?.toString() ?: "",
+            text = node.text?.toString() ?: "",
+            bounds = bounds,
+            className = node.className?.toString() ?: ""
+        )
     }
 }

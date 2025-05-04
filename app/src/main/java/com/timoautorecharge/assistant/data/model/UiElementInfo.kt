@@ -15,11 +15,16 @@ data class UiElementInfo(
     val contentDescription: String = "",
     val text: String = "",
     val bounds: android.graphics.Rect = android.graphics.Rect(),
-    val className: String = ""
+    val className: String = "",
+    val keyName: String = "" // Unique identifier for this element in settings
 ) : Parcelable {
     @Parcelize
     enum class ElementType : Parcelable {
         BUTTON,
-        INPUT_FIELD
+        INPUT_FIELD,
+        TEXT_FIELD,
+        CHECKBOX,
+        RADIO_BUTTON,
+        TOGGLE
     }
 }

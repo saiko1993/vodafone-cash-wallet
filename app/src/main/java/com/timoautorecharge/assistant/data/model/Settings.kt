@@ -26,6 +26,7 @@ data class Settings(
     val whatsappPaymentInstructionsTemplate: String = "Please send %s EGP to Vodafone Cash wallet %s",
     val whatsappPaymentConfirmationTemplate: String = "Your payment of %s EGP has been confirmed. Recharging your Timo account now.",
     val whatsappRechargeConfirmationTemplate: String = "%s coins have been successfully recharged to your Timo ID %s.",
+    val whatsAppApiKey: String? = null,
     
     // Timo app navigation settings
     val timoPackageName: String = "com.timo.app",

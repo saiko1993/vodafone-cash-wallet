@@ -9,9 +9,16 @@ import com.timoautorecharge.assistant.data.model.Customer
 import com.timoautorecharge.assistant.data.model.Log
 import com.timoautorecharge.assistant.data.model.Settings
 import com.timoautorecharge.assistant.data.model.Transaction
+import com.timoautorecharge.assistant.data.model.UiElementRegistry
 
 @Database(
-    entities = [Transaction::class, Settings::class, Customer::class, Log::class],
+    entities = [
+        Transaction::class, 
+        Settings::class, 
+        Customer::class, 
+        Log::class,
+        UiElementRegistry::class
+    ],
     version = 1,
     exportSchema = false
 )
@@ -21,6 +28,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun settingsDao(): SettingsDao
     abstract fun customerDao(): CustomerDao
     abstract fun logDao(): LogDao
+    abstract fun uiElementRegistryDao(): UiElementRegistryDao
     
     companion object {
         @Volatile

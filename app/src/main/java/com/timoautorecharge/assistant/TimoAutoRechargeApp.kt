@@ -8,14 +8,19 @@ import com.timoautorecharge.assistant.data.repository.CustomerRepository
 import com.timoautorecharge.assistant.data.repository.LogRepository
 import com.timoautorecharge.assistant.data.repository.SettingsRepository
 import com.timoautorecharge.assistant.data.repository.TransactionRepository
+import com.timoautorecharge.assistant.data.repository.UiElementRegistryRepository
 import com.timoautorecharge.assistant.service.AutoRechargeService
+import com.timoautorecharge.assistant.service.ConnectionTestService
 import com.timoautorecharge.assistant.service.SmsService
 import com.timoautorecharge.assistant.service.TimoAccessibilityService
 import com.timoautorecharge.assistant.service.TransactionCoordinatorService
 import com.timoautorecharge.assistant.service.WhatsAppAccessibilityService
+import com.timoautorecharge.assistant.service.WhatsAppApiService
 import com.timoautorecharge.assistant.service.WhatsAppService
+import com.timoautorecharge.assistant.ui.viewmodel.ConnectionViewModel
 import com.timoautorecharge.assistant.ui.viewmodel.MainViewModel
 import com.timoautorecharge.assistant.ui.viewmodel.SettingsViewModel
+import com.timoautorecharge.assistant.ui.viewmodel.UiElementsViewModel
 import com.timoautorecharge.assistant.util.CoinCalculator
 import com.timoautorecharge.assistant.util.NotificationService
 import com.timoautorecharge.assistant.util.SmsTemplateManager
@@ -63,12 +68,14 @@ class TimoAutoRechargeApp : Application() {
         single { get<AppDatabase>().settingsDao() }
         single { get<AppDatabase>().customerDao() }
         single { get<AppDatabase>().logDao() }
+        single { get<AppDatabase>().uiElementRegistryDao() }
         
         // Repositories
         single { TransactionRepository(get()) }
         single { SettingsRepository(get()) }
         single { CustomerRepository(get()) }
         single { LogRepository(get()) }
+        single { UiElementRegistryRepository(get()) }
         
         // Utilities
         single { CoinCalculator(get()) }
@@ -110,6 +117,21 @@ class TimoAutoRechargeApp : Application() {
                 coinCalculator = get()
             ) 
         }
+        single {
+            ConnectionTestService(
+                context = get(),
+                settingsRepository = get(),
+                logRepository = get(),
+                notificationService = get()
+            )
+        }
+        single {
+            WhatsAppApiService(
+                context = get(),
+                settingsRepository = get(),
+                logRepository = get()
+            )
+        }
         
         // Workers
         worker { RechargeWorker(get(), get()) }
@@ -117,5 +139,7 @@ class TimoAutoRechargeApp : Application() {
         // ViewModels
         viewModel { MainViewModel(get(), get(), get(), get(), get(), get()) }
         viewModel { SettingsViewModel(get(), get()) }
+        viewModel { UiElementsViewModel(get(), get()) }
+        viewModel { ConnectionViewModel(get(), get()) }
     }
 }

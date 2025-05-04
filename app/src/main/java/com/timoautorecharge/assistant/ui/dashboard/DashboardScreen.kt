@@ -27,7 +27,11 @@ import com.timoautorecharge.assistant.ui.components.TransactionItem
 import com.timoautorecharge.assistant.ui.viewmodel.MainViewModel
 
 @Composable
-fun DashboardScreen(viewModel: MainViewModel) {
+fun DashboardScreen(
+    navigateToUiElements: () -> Unit,
+    navigateToConnectionStatus: () -> Unit,
+    viewModel: MainViewModel
+) {
     val pendingPayments by viewModel.pendingPayments.collectAsState()
     val pendingRecharges by viewModel.pendingRecharges.collectAsState()
     val recentTransactions by viewModel.recentTransactions.collectAsState()
@@ -183,7 +187,7 @@ fun DashboardScreen(viewModel: MainViewModel) {
             }
         }
         
-        // Action Button
+        // Action Buttons
         Button(
             onClick = { viewModel.showManualRechargeDialog() },
             modifier = Modifier
@@ -197,6 +201,42 @@ fun DashboardScreen(viewModel: MainViewModel) {
                 text = stringResource(R.string.manual_recharge),
                 modifier = Modifier.padding(vertical = 4.dp)
             )
+        }
+        
+        // Additional Action Buttons
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // UI Elements Management Button
+            Button(
+                onClick = { navigateToUiElements() },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.secondary
+                )
+            ) {
+                Text(
+                    text = "UI Elements",
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+            }
+            
+            // Connection Status Button
+            Button(
+                onClick = { navigateToConnectionStatus() },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.tertiary
+                )
+            ) {
+                Text(
+                    text = "Connection Status",
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+            }
         }
     }
 }
