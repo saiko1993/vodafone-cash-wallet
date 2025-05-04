@@ -39,4 +39,32 @@
     <string name="recharge_failure">Failed to recharge Timo ID %1$s: %2$s</string>
     <string name="navigation_template_applied">Applied navigation template: %1$s</string>
     <string name="navigation_step_completed">Completed navigation step: %1$s</string>
+    
+    <!-- Dashboard -->
+    <string name="service_status">Service Status</string>
+    <string name="view_all">View All</string>
+    <string name="no_transactions">No transactions available</string>
+    <string name="manual_recharge">Manual Recharge</string>
+    <string name="verify_payment">Verify Payment</string>
+    <string name="retry_recharge">Retry Recharge</string>
+    <string name="cancel">Cancel</string>
+    
+    <!-- Manual Recharge Dialog -->
+    <string name="manual_recharge_title">Manual Recharge</string>
+    <string name="timo_id">Timo ID</string>
+    <string name="amount">Amount (EGP)</string>
+    <string name="sender_number">Sender Number</string>
+    <string name="confirm">Confirm</string>
+    
+    <!-- Notifications -->
+    <string name="payment_verified_notification">Payment Verified</string>
+    <string name="payment_verified_message">Payment of %1$s EGP from %2$s has been verified</string>
+    <string name="payment_timeout_notification">Payment Timeout</string>
+    <string name="payment_timeout_message">Payment for Timo ID %1$s has timed out</string>
+    <string name="recharge_success_notification">Recharge Successful</string>
+    <string name="recharge_success_message">Successfully recharged %1$d coins to Timo ID %2$s</string>
+    <string name="recharge_failed_notification">Recharge Failed</string>
+    <string name="recharge_failed_message">Failed to recharge Timo ID %1$s: %2$s</string>
+    <string name="manual_intervention_notification">Manual Intervention Required</string>
+    <string name="manual_intervention_message">Transaction for Timo ID %1$s requires manual intervention</string>
 </resources>
