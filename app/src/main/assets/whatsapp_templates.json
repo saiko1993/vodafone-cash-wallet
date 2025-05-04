@@ -1,0 +1,24 @@
+{
+  "recharge_request_templates": [
+    {
+      "name": "Standard Recharge Request",
+      "pattern": "(?i).*recharge.*?(\\d+(?:\\.\\d+)?).*?ID[:\\s]*(\\d+).*",
+      "description": "Standard format for recharge requests (e.g., 'I want to recharge 100 EGP, my ID is 12345')"
+    },
+    {
+      "name": "Arabic Recharge Request",
+      "pattern": "(?i).*شحن.*?(\\d+(?:\\.\\d+)?).*?ID[:\\s]*(\\d+).*",
+      "description": "Arabic format for recharge requests using 'شحن' (recharge)"
+    },
+    {
+      "name": "Coins Request",
+      "pattern": "(?i).*coins.*?(\\d+(?:\\.\\d+)?).*?ID[:\\s]*(\\d+).*",
+      "description": "Request specifying coins instead of amount (e.g., 'I need 1000 coins, my ID is 12345')"
+    },
+    {
+      "name": "Simple Format",
+      "pattern": "(?i).*?(\\d+(?:\\.\\d+)?).*?ID[:\\s]*(\\d+).*",
+      "description": "Simple format with just amount and ID (e.g., '100 EGP, ID: 12345')"
+    }
+  ]
+}

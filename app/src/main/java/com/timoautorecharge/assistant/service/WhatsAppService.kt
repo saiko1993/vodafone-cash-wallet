@@ -2,6 +2,7 @@ package com.timoautorecharge.assistant.service
 
 import android.content.Context
 import android.content.Intent
+import com.timoautorecharge.assistant.R
 import com.timoautorecharge.assistant.data.model.Customer
 import com.timoautorecharge.assistant.data.model.LogType
 import com.timoautorecharge.assistant.data.model.Transaction
@@ -12,9 +13,22 @@ import com.timoautorecharge.assistant.data.repository.SettingsRepository
 import com.timoautorecharge.assistant.data.repository.TransactionRepository
 import com.timoautorecharge.assistant.util.CoinCalculator
 import com.timoautorecharge.assistant.util.NotificationService
+import com.timoautorecharge.assistant.util.WhatsAppTemplateManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import org.koin.java.KoinJavaComponent.inject
 import java.util.regex.Pattern
 
+/**
+ * Service responsible for processing WhatsApp messages and sending responses.
+ * Uses WhatsAppAccessibilityService for UI automation.
+ */
 class WhatsAppService(
     private val context: Context,
     private val transactionRepository: TransactionRepository,
@@ -22,16 +36,67 @@ class WhatsAppService(
     private val customerRepository: CustomerRepository,
     private val logRepository: LogRepository,
     private val coinCalculator: CoinCalculator,
-    private val notificationService: NotificationService
+    private val notificationService: NotificationService,
+    private val templateManager: WhatsAppTemplateManager
 ) {
+    private val whatsAppAccessibilityService: WhatsAppAccessibilityService by inject(WhatsAppAccessibilityService::class.java)
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     
-    // Regex patterns for extracting information from messages
-    private val rechargeRequestPattern = 
-        Pattern.compile("(?i).*recharge.*?(\\d+).*?ID[:\\s]*(\\d+).*")
+    // Service status
+    private val _serviceStatus = MutableStateFlow(ServiceStatus.CHECKING)
+    val serviceStatus: StateFlow<ServiceStatus> = _serviceStatus.asStateFlow()
     
+    // Initialize service
+    init {
+        // Monitor accessibility service status
+        scope.launch {
+            try {
+                whatsAppAccessibilityService.serviceStatus.collect { accessibilityStatus ->
+                    _serviceStatus.value = when (accessibilityStatus) {
+                        WhatsAppAccessibilityService.ServiceStatus.ACTIVE -> ServiceStatus.ACTIVE
+                        WhatsAppAccessibilityService.ServiceStatus.INACTIVE -> ServiceStatus.INACTIVE
+                    }
+                    
+                    // Log status changes
+                    logRepository.logInfo(
+                        LogType.WHATSAPP,
+                        "WhatsApp service status changed to ${_serviceStatus.value}"
+                    )
+                    
+                    // Notify status changes
+                    notificationService.notifyServiceStatusChange(
+                        "WhatsApp Service",
+                        if (_serviceStatus.value == ServiceStatus.ACTIVE) 
+                            context.getString(R.string.whatsapp_service_active)
+                        else 
+                            context.getString(R.string.whatsapp_service_inactive)
+                    )
+                }
+            } catch (e: Exception) {
+                logRepository.logError(
+                    LogType.WHATSAPP,
+                    "Error monitoring WhatsApp service status: ${e.message}"
+                )
+                _serviceStatus.value = ServiceStatus.INACTIVE
+            }
+        }
+    }
+    
+    /**
+     * Process a WhatsApp message from a customer.
+     * Parses the message for recharge request details and creates a transaction.
+     *
+     * @param message The message content
+     * @param senderNumber The sender's phone number
+     */
     suspend fun processWhatsAppMessage(message: String, senderNumber: String) {
         try {
-            val parseResult = parseRechargeRequest(message)
+            // Get settings for message parsing
+            val settings = settingsRepository.getSettingsSync()
+            
+            // Use template manager to get the appropriate regex pattern
+            val parseResult = templateManager.parseRechargeRequest(message)
+            
             if (parseResult != null) {
                 val (timoId, requestAmount) = parseResult
                 
@@ -54,8 +119,10 @@ class WhatsAppService(
                 saveCustomerInfo(senderNumber, timoId)
                 
                 // Send payment instructions
-                val settings = settingsRepository.getSettingsSync()
                 sendPaymentInstructions(senderNumber, requestAmount, settings.vodafoneWalletNumber)
+                
+                // Notify admin about new transaction
+                notificationService.notifyNewTransaction(transaction)
                 
                 logRepository.logInfo(
                     LogType.WHATSAPP,
@@ -76,16 +143,12 @@ class WhatsAppService(
         }
     }
     
-    private fun parseRechargeRequest(message: String): Pair<String, Double>? {
-        val matcher = rechargeRequestPattern.matcher(message)
-        if (matcher.matches()) {
-            val amount = matcher.group(1)?.toDoubleOrNull() ?: return null
-            val timoId = matcher.group(2) ?: return null
-            return Pair(timoId, amount)
-        }
-        return null
-    }
-    
+    /**
+     * Save or update customer information in the database.
+     *
+     * @param phoneNumber The customer's phone number
+     * @param timoId The customer's Timo ID
+     */
     private suspend fun saveCustomerInfo(phoneNumber: String, timoId: String) {
         val existingCustomer = customerRepository.getCustomerByPhoneNumber(phoneNumber)
         
@@ -109,42 +172,196 @@ class WhatsAppService(
         }
     }
     
+    /**
+     * Send payment instructions to a customer via WhatsApp.
+     *
+     * @param phoneNumber The customer's phone number
+     * @param amount The payment amount
+     * @param walletNumber The Vodafone wallet number
+     */
     private fun sendPaymentInstructions(
         phoneNumber: String, 
         amount: Double,
         walletNumber: String
     ) {
-        // In a real implementation, this would use Accessibility Service to navigate WhatsApp UI
-        // and send a message. For now, we'll just log it.
-        logRepository.logInfo(
-            LogType.WHATSAPP,
-            "Would send payment instructions to $phoneNumber: " +
-            "Please send $amount EGP to Vodafone Cash wallet $walletNumber"
+        // Format the message using the template
+        val message = context.getString(
+            R.string.payment_instructions,
+            amount.toString(),
+            walletNumber
         )
         
-        // This is a placeholder for the actual implementation
-        // In a real app, we would use Accessibility Service to:
-        // 1. Open WhatsApp
-        // 2. Navigate to the chat with the customer
-        // 3. Type and send the payment instructions
+        // Send the message using the accessibility service
+        if (_serviceStatus.value == ServiceStatus.ACTIVE) {
+            whatsAppAccessibilityService.sendWhatsAppMessage(
+                phoneNumber,
+                message
+            ) { success ->
+                if (success) {
+                    logRepository.logInfo(
+                        LogType.WHATSAPP,
+                        "Sent payment instructions to $phoneNumber: $message"
+                    )
+                } else {
+                    logRepository.logError(
+                        LogType.WHATSAPP,
+                        "Failed to send payment instructions to $phoneNumber"
+                    )
+                    
+                    // Try alternative method
+                    whatsAppAccessibilityService.sendWhatsAppMessageViaDeepLink(
+                        phoneNumber,
+                        message
+                    )
+                }
+            }
+        } else {
+            logRepository.logWarning(
+                LogType.WHATSAPP,
+                "WhatsApp service is not active. Cannot send payment instructions to $phoneNumber"
+            )
+            
+            // Notify admin that service is not active
+            notificationService.notifyServiceInactive("WhatsApp Service")
+        }
     }
     
+    /**
+     * Send payment confirmation to a customer via WhatsApp.
+     *
+     * @param phoneNumber The customer's phone number
+     * @param transaction The transaction details
+     */
     fun sendPaymentConfirmation(phoneNumber: String, transaction: Transaction) {
-        logRepository.logInfo(
-            LogType.WHATSAPP,
-            "Would send payment confirmation to $phoneNumber for transaction ${transaction.id}"
+        val message = context.getString(
+            R.string.payment_confirmed,
+            transaction.requestAmount.toString()
         )
         
-        // Placeholder for actual implementation
+        if (_serviceStatus.value == ServiceStatus.ACTIVE) {
+            whatsAppAccessibilityService.sendWhatsAppMessage(
+                phoneNumber,
+                message
+            ) { success ->
+                if (success) {
+                    logRepository.logInfo(
+                        LogType.WHATSAPP,
+                        "Sent payment confirmation to $phoneNumber for transaction ${transaction.id}"
+                    )
+                } else {
+                    logRepository.logError(
+                        LogType.WHATSAPP,
+                        "Failed to send payment confirmation to $phoneNumber"
+                    )
+                    
+                    // Try alternative method
+                    whatsAppAccessibilityService.sendWhatsAppMessageViaDeepLink(
+                        phoneNumber,
+                        message
+                    )
+                }
+            }
+        } else {
+            logRepository.logWarning(
+                LogType.WHATSAPP,
+                "WhatsApp service is not active. Cannot send payment confirmation to $phoneNumber"
+            )
+        }
     }
     
+    /**
+     * Send recharge confirmation to a customer via WhatsApp.
+     *
+     * @param phoneNumber The customer's phone number
+     * @param transaction The transaction details
+     */
     fun sendRechargeConfirmation(phoneNumber: String, transaction: Transaction) {
-        logRepository.logInfo(
-            LogType.WHATSAPP,
-            "Would send recharge confirmation to $phoneNumber for transaction ${transaction.id}: " +
-            "${transaction.coinQuantity} coins have been recharged to Timo ID ${transaction.timoId}"
+        val message = context.getString(
+            R.string.recharge_completed,
+            transaction.coinQuantity,
+            transaction.timoId
         )
         
-        // Placeholder for actual implementation
+        if (_serviceStatus.value == ServiceStatus.ACTIVE) {
+            whatsAppAccessibilityService.sendWhatsAppMessage(
+                phoneNumber,
+                message
+            ) { success ->
+                if (success) {
+                    logRepository.logInfo(
+                        LogType.WHATSAPP,
+                        "Sent recharge confirmation to $phoneNumber for transaction ${transaction.id}"
+                    )
+                } else {
+                    logRepository.logError(
+                        LogType.WHATSAPP,
+                        "Failed to send recharge confirmation to $phoneNumber"
+                    )
+                    
+                    // Try alternative method
+                    whatsAppAccessibilityService.sendWhatsAppMessageViaDeepLink(
+                        phoneNumber,
+                        message
+                    )
+                }
+            }
+        } else {
+            logRepository.logWarning(
+                LogType.WHATSAPP,
+                "WhatsApp service is not active. Cannot send recharge confirmation to $phoneNumber"
+            )
+        }
+    }
+    
+    /**
+     * Send recharge failure notification to a customer via WhatsApp.
+     *
+     * @param phoneNumber The customer's phone number
+     * @param transaction The transaction details
+     */
+    fun sendRechargeFailure(phoneNumber: String, transaction: Transaction) {
+        val message = context.getString(
+            R.string.recharge_failed,
+            transaction.timoId
+        )
+        
+        if (_serviceStatus.value == ServiceStatus.ACTIVE) {
+            whatsAppAccessibilityService.sendWhatsAppMessage(
+                phoneNumber,
+                message
+            ) { success ->
+                if (success) {
+                    logRepository.logInfo(
+                        LogType.WHATSAPP,
+                        "Sent recharge failure notification to $phoneNumber for transaction ${transaction.id}"
+                    )
+                } else {
+                    logRepository.logError(
+                        LogType.WHATSAPP,
+                        "Failed to send recharge failure notification to $phoneNumber"
+                    )
+                    
+                    // Try alternative method
+                    whatsAppAccessibilityService.sendWhatsAppMessageViaDeepLink(
+                        phoneNumber,
+                        message
+                    )
+                }
+            }
+        } else {
+            logRepository.logWarning(
+                LogType.WHATSAPP,
+                "WhatsApp service is not active. Cannot send recharge failure notification to $phoneNumber"
+            )
+        }
+    }
+    
+    /**
+     * Enum representing the status of the WhatsApp service.
+     */
+    enum class ServiceStatus {
+        ACTIVE,
+        INACTIVE,
+        CHECKING
     }
 }

@@ -12,6 +12,7 @@
     <string name="recent_transactions">Recent Transactions</string>
     <string name="recharge_now">Recharge Now</string>
     <string name="accessibility_service_description">Used to automate recharge process in Timo app</string>
+    <string name="whatsapp_accessibility_service_description">Used to automate WhatsApp message interactions</string>
     
     <!-- Settings Screen Categories -->
     <string name="general_settings">General Settings</string>
@@ -21,4 +22,12 @@
     <string name="timo_app_settings">Timo App Settings</string>
     <string name="navigation_settings">Navigation Settings</string>
     <string name="save_settings">Save Settings</string>
+    
+    <!-- WhatsApp Integration -->
+    <string name="whatsapp_service_active">WhatsApp Service Active</string>
+    <string name="whatsapp_service_inactive">WhatsApp Service Inactive</string>
+    <string name="payment_instructions">Please send %1$s EGP to Vodafone Cash wallet %2$s</string>
+    <string name="payment_confirmed">Your payment of %1$s EGP has been confirmed. Processing your recharge now.</string>
+    <string name="recharge_completed">Your recharge of %1$d coins to Timo ID %2$s has been completed successfully.</string>
+    <string name="recharge_failed">Your recharge to Timo ID %1$s has failed. Please contact support.</string>
 </resources>
