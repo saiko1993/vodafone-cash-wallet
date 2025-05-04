@@ -9,16 +9,29 @@ import com.timoautorecharge.assistant.data.repository.LogRepository
 import com.timoautorecharge.assistant.data.repository.SettingsRepository
 import com.timoautorecharge.assistant.data.repository.TransactionRepository
 import com.timoautorecharge.assistant.service.AutoRechargeService
+import com.timoautorecharge.assistant.service.SmsService
+import com.timoautorecharge.assistant.service.TimoAccessibilityService
+import com.timoautorecharge.assistant.service.TransactionCoordinatorService
+import com.timoautorecharge.assistant.service.WhatsAppAccessibilityService
+import com.timoautorecharge.assistant.service.WhatsAppService
 import com.timoautorecharge.assistant.ui.viewmodel.MainViewModel
 import com.timoautorecharge.assistant.ui.viewmodel.SettingsViewModel
 import com.timoautorecharge.assistant.util.CoinCalculator
 import com.timoautorecharge.assistant.util.NotificationService
+import com.timoautorecharge.assistant.util.SmsTemplateManager
+import com.timoautorecharge.assistant.util.TimoNavigationTemplateManager
+import com.timoautorecharge.assistant.util.WhatsAppTemplateManager
+import com.timoautorecharge.assistant.worker.RechargeWorker
 import org.koin.android.ext.koin.androidContext
 import org.koin.androidx.viewmodel.dsl.viewModel
+import org.koin.androidx.workmanager.dsl.worker
 import org.koin.core.context.startKoin
 import org.koin.dsl.module
 import timber.log.Timber
 
+/**
+ * Main application class that initializes dependencies and starts the background service.
+ */
 class TimoAutoRechargeApp : Application() {
     
     override fun onCreate() {
@@ -60,6 +73,45 @@ class TimoAutoRechargeApp : Application() {
         // Utilities
         single { CoinCalculator(get()) }
         single { NotificationService(get(), get()) }
+        single { SmsTemplateManager(get()) }
+        single { WhatsAppTemplateManager(get()) }
+        single { TimoNavigationTemplateManager(get()) }
+        
+        // Services
+        single { WhatsAppAccessibilityService() }
+        single { TimoAccessibilityService() }
+        single { 
+            WhatsAppService(
+                context = get(),
+                settingsRepository = get(),
+                customerRepository = get(),
+                logRepository = get(),
+                templateManager = get()
+            ) 
+        }
+        single { 
+            SmsService(
+                context = get(),
+                settingsRepository = get(),
+                logRepository = get(),
+                templateManager = get()
+            ) 
+        }
+        single { 
+            TransactionCoordinatorService(
+                context = get(),
+                transactionRepository = get(),
+                logRepository = get(),
+                settingsRepository = get(),
+                whatsAppService = get(),
+                smsService = get(),
+                notificationService = get(),
+                coinCalculator = get()
+            ) 
+        }
+        
+        // Workers
+        worker { RechargeWorker(get(), get()) }
         
         // ViewModels
         viewModel { MainViewModel(get(), get(), get()) }
