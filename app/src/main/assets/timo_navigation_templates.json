@@ -1,0 +1,74 @@
+{
+  "navigation_templates": [
+    {
+      "name": "Default Timo Navigation",
+      "description": "Default navigation template for Timo app",
+      "packageName": "com.timo.app",
+      "rechargeButtonId": "com.timo.app:id/recharge_button",
+      "timoIdInputId": "com.timo.app:id/timo_id_input",
+      "coinQuantityInputId": "com.timo.app:id/coin_quantity_input",
+      "confirmButtonId": "com.timo.app:id/confirm_button",
+      "navigationDelayMs": 1000,
+      "maxRetries": 3,
+      "additionalSteps": []
+    },
+    {
+      "name": "Timo with Login",
+      "description": "Navigation template for Timo app with login step",
+      "packageName": "com.timo.app",
+      "rechargeButtonId": "com.timo.app:id/recharge_button",
+      "timoIdInputId": "com.timo.app:id/timo_id_input",
+      "coinQuantityInputId": "com.timo.app:id/coin_quantity_input",
+      "confirmButtonId": "com.timo.app:id/confirm_button",
+      "navigationDelayMs": 1500,
+      "maxRetries": 5,
+      "additionalSteps": [
+        {
+          "name": "Login",
+          "type": "click",
+          "targetId": "com.timo.app:id/login_button",
+          "delayAfterMs": 2000
+        },
+        {
+          "name": "Enter Username",
+          "type": "input",
+          "targetId": "com.timo.app:id/username_input",
+          "value": "admin",
+          "delayAfterMs": 500
+        },
+        {
+          "name": "Enter Password",
+          "type": "input",
+          "targetId": "com.timo.app:id/password_input",
+          "value": "password",
+          "delayAfterMs": 500
+        },
+        {
+          "name": "Submit Login",
+          "type": "click",
+          "targetId": "com.timo.app:id/submit_button",
+          "delayAfterMs": 2000
+        }
+      ]
+    },
+    {
+      "name": "Timo Alternative Layout",
+      "description": "Navigation template for Timo app with alternative layout",
+      "packageName": "com.timo.app",
+      "rechargeButtonId": "com.timo.app:id/menu_recharge",
+      "timoIdInputId": "com.timo.app:id/user_id_field",
+      "coinQuantityInputId": "com.timo.app:id/coins_amount",
+      "confirmButtonId": "com.timo.app:id/btn_confirm",
+      "navigationDelayMs": 800,
+      "maxRetries": 4,
+      "additionalSteps": [
+        {
+          "name": "Navigate to Recharge Tab",
+          "type": "click",
+          "targetId": "com.timo.app:id/tab_recharge",
+          "delayAfterMs": 1000
+        }
+      ]
+    }
+  ]
+}

@@ -30,4 +30,13 @@
     <string name="payment_confirmed">Your payment of %1$s EGP has been confirmed. Processing your recharge now.</string>
     <string name="recharge_completed">Your recharge of %1$d coins to Timo ID %2$s has been completed successfully.</string>
     <string name="recharge_failed">Your recharge to Timo ID %1$s has failed. Please contact support.</string>
+    
+    <!-- Timo App Integration -->
+    <string name="timo_service_active">Timo Accessibility Service Active</string>
+    <string name="timo_service_inactive">Timo Accessibility Service Inactive</string>
+    <string name="recharge_started">Starting recharge of %1$d coins to Timo ID %2$s</string>
+    <string name="recharge_success">Successfully recharged %1$d coins to Timo ID %2$s</string>
+    <string name="recharge_failure">Failed to recharge Timo ID %1$s: %2$s</string>
+    <string name="navigation_template_applied">Applied navigation template: %1$s</string>
+    <string name="navigation_step_completed">Completed navigation step: %1$s</string>
 </resources>
