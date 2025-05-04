@@ -3,43 +3,67 @@ package com.timoautorecharge.assistant.worker
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.timoautorecharge.assistant.data.model.LogType
+import com.timoautorecharge.assistant.data.model.Log
 import com.timoautorecharge.assistant.data.model.TransactionStatus
 import com.timoautorecharge.assistant.data.repository.LogRepository
 import com.timoautorecharge.assistant.data.repository.TransactionRepository
 import com.timoautorecharge.assistant.service.TimoAccessibilityService
-import com.timoautorecharge.assistant.util.NotificationService
+import com.timoautorecharge.assistant.service.TransactionCoordinatorService
 import org.koin.java.KoinJavaComponent.inject
 
+/**
+ * Worker that executes the recharge process in the Timo app.
+ * Triggered after payment verification or manual recharge request.
+ */
 class RechargeWorker(
     context: Context,
     params: WorkerParameters
 ) : CoroutineWorker(context, params) {
     
+    companion object {
+        const val KEY_TRANSACTION_ID = "transactionId"
+    }
+    
     private val transactionRepository: TransactionRepository by inject(TransactionRepository::class.java)
     private val logRepository: LogRepository by inject(LogRepository::class.java)
-    private val notificationService: NotificationService by inject(NotificationService::class.java)
+    private val timoAccessibilityService: TimoAccessibilityService by inject(TimoAccessibilityService::class.java)
+    private val transactionCoordinator: TransactionCoordinatorService by inject(TransactionCoordinatorService::class.java)
     
     override suspend fun doWork(): Result {
-        val transactionId = inputData.getLong("transactionId", -1)
+        val transactionId = inputData.getLong(KEY_TRANSACTION_ID, -1)
         if (transactionId == -1L) {
+            logRepository.addLog(
+                Log(
+                    message = "Invalid transaction ID in RechargeWorker",
+                    timestamp = System.currentTimeMillis(),
+                    level = Log.Level.ERROR,
+                    source = "RechargeWorker"
+                )
+            )
             return Result.failure()
         }
         
         val transaction = transactionRepository.getTransactionById(transactionId)
         if (transaction == null) {
-            logRepository.logError(
-                LogType.RECHARGE,
-                "Transaction not found: $transactionId"
+            logRepository.addLog(
+                Log(
+                    message = "Transaction not found: $transactionId",
+                    timestamp = System.currentTimeMillis(),
+                    level = Log.Level.ERROR,
+                    source = "RechargeWorker"
+                )
             )
             return Result.failure()
         }
         
         if (!transaction.paymentVerified) {
-            logRepository.logWarning(
-                LogType.RECHARGE,
-                "Attempted to recharge unverified transaction: $transactionId",
-                transactionId
+            logRepository.addLog(
+                Log(
+                    message = "Attempted to recharge unverified transaction: $transactionId",
+                    timestamp = System.currentTimeMillis(),
+                    level = Log.Level.WARNING,
+                    source = "RechargeWorker"
+                )
             )
             return Result.failure()
         }
@@ -50,84 +74,112 @@ class RechargeWorker(
                 transaction.copy(status = TransactionStatus.RECHARGE_IN_PROGRESS)
             )
             
-            // Execute recharge
-            val success = executeRecharge(transaction.timoId, transaction.coinQuantity)
+            // Log the start of recharge
+            logRepository.addLog(
+                Log(
+                    message = "Starting recharge for Timo ID ${transaction.timoId} with ${transaction.coinQuantity} coins",
+                    timestamp = System.currentTimeMillis(),
+                    level = Log.Level.INFO,
+                    source = "RechargeWorker"
+                )
+            )
             
-            if (success) {
-                // Update transaction
-                transactionRepository.updateTransaction(
-                    transaction.copy(
-                        rechargeCompleted = true,
-                        rechargeTimestamp = System.currentTimeMillis(),
-                        status = TransactionStatus.RECHARGE_COMPLETED
-                    )
-                )
-                
-                // Notify admin and customer
-                notificationService.notifyRechargeCompleted(transaction)
-                
-                logRepository.logInfo(
-                    LogType.RECHARGE,
-                    "Recharge completed for transaction $transactionId",
-                    transactionId
-                )
-                
-                return Result.success()
+            // Execute recharge
+            val result = executeRecharge(transaction.timoId, transaction.coinQuantity)
+            
+            // Process the recharge result through the coordinator
+            transactionCoordinator.processRechargeCompletion(
+                transactionId = transactionId,
+                success = result.success,
+                errorMessage = result.errorMessage
+            )
+            
+            return if (result.success) {
+                Result.success()
+            } else if (result.retryable) {
+                Result.retry()
             } else {
-                // Update transaction
-                transactionRepository.updateTransaction(
-                    transaction.copy(
-                        status = TransactionStatus.RECHARGE_FAILED
-                    )
-                )
-                
-                // Notify admin
-                notificationService.notifyRechargeFailed(transaction)
-                
-                logRepository.logError(
-                    LogType.RECHARGE,
-                    "Recharge failed for transaction $transactionId",
-                    transactionId
-                )
-                
-                return Result.retry()
+                Result.failure()
             }
         } catch (e: Exception) {
-            logRepository.logError(
-                LogType.RECHARGE,
-                "Error during recharge: ${e.message}",
-                transactionId
-            )
-            
-            // Update transaction
-            transactionRepository.updateTransaction(
-                transaction.copy(
-                    status = TransactionStatus.MANUAL_INTERVENTION_REQUIRED,
-                    notes = "Error: ${e.message}"
+            // Log the error
+            logRepository.addLog(
+                Log(
+                    message = "Error during recharge: ${e.message}",
+                    timestamp = System.currentTimeMillis(),
+                    level = Log.Level.ERROR,
+                    source = "RechargeWorker"
                 )
             )
             
-            // Notify admin
-            notificationService.notifyManualInterventionRequired(transaction)
+            // Process the recharge failure through the coordinator
+            transactionCoordinator.processRechargeCompletion(
+                transactionId = transactionId,
+                success = false,
+                errorMessage = "Exception: ${e.message}"
+            )
             
             return Result.failure()
         }
     }
     
-    private suspend fun executeRecharge(timoId: String, coinQuantity: Int): Boolean {
-        // In a real implementation, this would use the TimoAccessibilityService to perform the recharge
-        // For now, we'll just log it and simulate success
-        logRepository.logInfo(
-            LogType.RECHARGE,
-            "Would execute recharge for Timo ID $timoId with $coinQuantity coins"
-        )
+    /**
+     * Executes the recharge process using the TimoAccessibilityService.
+     * 
+     * @param timoId The Timo ID to recharge
+     * @param coinQuantity The quantity of coins to recharge
+     * @return RechargeResult containing success status and error message if applicable
+     */
+    private suspend fun executeRecharge(timoId: String, coinQuantity: Int): RechargeResult {
+        // Check if the accessibility service is active
+        if (timoAccessibilityService.getServiceStatus() != TimoAccessibilityService.ServiceStatus.ACTIVE) {
+            return RechargeResult(
+                success = false,
+                retryable = true,
+                errorMessage = "Timo Accessibility Service is not active"
+            )
+        }
         
-        // This is a placeholder for the actual implementation
-        // In a real app, we would:
-        // 1. Get the TimoAccessibilityService instance
-        // 2. Use it to navigate the Timo app UI and perform the recharge
-        // 3. Return true if successful, false otherwise
-        
-        return true
+        // Perform the recharge using the accessibility service
+        return try {
+            val result = timoAccessibilityService.performRecharge(timoId, coinQuantity)
+            
+            if (result.success) {
+                logRepository.addLog(
+                    Log(
+                        message = "Recharge successful for Timo ID $timoId with $coinQuantity coins",
+                        timestamp = System.currentTimeMillis(),
+                        level = Log.Level.INFO,
+                        source = "RechargeWorker"
+                    )
+                )
+            } else {
+                logRepository.addLog(
+                    Log(
+                        message = "Recharge failed for Timo ID $timoId: ${result.errorMessage}",
+                        timestamp = System.currentTimeMillis(),
+                        level = Log.Level.ERROR,
+                        source = "RechargeWorker"
+                    )
+                )
+            }
+            
+            result
+        } catch (e: Exception) {
+            RechargeResult(
+                success = false,
+                retryable = false,
+                errorMessage = "Exception during recharge: ${e.message}"
+            )
+        }
     }
+    
+    /**
+     * Data class representing the result of a recharge operation.
+     */
+    data class RechargeResult(
+        val success: Boolean,
+        val retryable: Boolean = false,
+        val errorMessage: String? = null
+    )
 }
