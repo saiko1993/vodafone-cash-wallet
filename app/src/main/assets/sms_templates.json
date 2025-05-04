@@ -1,0 +1,26 @@
+{
+  "vodafone_cash_templates": [
+    {
+      "name": "Standard Vodafone Cash",
+      "pattern": ".*vodafone cash.*received.*EGP\\s*(\\d+\\.?\\d*).*from\\s*(\\d+).*",
+      "description": "Standard Vodafone Cash SMS format"
+    },
+    {
+      "name": "Vodafone Cash with Date",
+      "pattern": ".*vodafone cash.*received.*EGP\\s*(\\d+\\.?\\d*).*from\\s*(\\d+).*on\\s*(\\d{2}/\\d{2}/\\d{4}).*",
+      "description": "Vodafone Cash SMS with date information"
+    },
+    {
+      "name": "Vodafone Cash Detailed",
+      "pattern": ".*vodafone cash.*transaction.*received.*EGP\\s*(\\d+\\.?\\d*).*from\\s*(\\d+).*date\\s*(\\d{2}/\\d{2}/\\d{4}\\s*\\d{2}:\\d{2}).*",
+      "description": "Detailed Vodafone Cash SMS with transaction ID and timestamp"
+    }
+  ],
+  "sender_numbers": [
+    "VODAFONE",
+    "VF-CASH",
+    "VODAFONECASH"
+  ],
+  "match_by_last_digits": 5,
+  "payment_timeout_minutes": 15
+}
