@@ -1,9 +1,18 @@
 package com.timoautorecharge.assistant.data.model
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "transactions")
+@Entity(
+    tableName = "transactions",
+    indices = [
+        Index(value = ["status"]),
+        Index(value = ["paymentVerified"]),
+        Index(value = ["requestTimestamp"]),
+        Index(value = ["senderNumber"])
+    ]
+)
 data class Transaction(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val timoId: String,
@@ -20,7 +29,7 @@ data class Transaction(
 )
 
 enum class TransactionStatus {
-    PENDING_PAYMENT,
+    PAYMENT_PENDING,
     PAYMENT_VERIFIED,
     PAYMENT_TIMEOUT,
     RECHARGE_IN_PROGRESS,
