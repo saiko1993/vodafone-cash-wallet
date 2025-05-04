@@ -10,9 +10,14 @@ class CoinCalculator(private val settingsRepository: SettingsRepository) {
         val settings = runBlocking { settingsRepository.getSettingsSync() }
         
         return when {
-            amount < 500 -> (amount / settings.tier1Rate * 100).toInt()
-            amount < 7500 -> (amount / settings.tier2Rate * 100).toInt()
-            else -> (amount / settings.tier3Rate * 100).toInt()
+            amount <= 0 -> 0
+            // Use configurable tier thresholds
+            amount < (settings.tier1Threshold * settings.tier1Rate / 100) -> 
+                (amount / settings.tier1Rate * 100).toInt()
+            amount < (settings.tier2Threshold * settings.tier2Rate / 100) -> 
+                (amount / settings.tier2Rate * 100).toInt()
+            else -> 
+                (amount / settings.tier3Rate * 100).toInt()
         }
     }
     
@@ -20,9 +25,14 @@ class CoinCalculator(private val settingsRepository: SettingsRepository) {
         val settings = runBlocking { settingsRepository.getSettingsSync() }
         
         return when {
-            coins < 50000 -> coins * settings.tier1Rate / 100
-            coins < 750000 -> coins * settings.tier2Rate / 100
-            else -> coins * settings.tier3Rate / 100
+            coins <= 0 -> 0.0
+            // Use configurable tier thresholds
+            coins <= settings.tier1Threshold -> 
+                coins * settings.tier1Rate / 100
+            coins <= settings.tier2Threshold -> 
+                coins * settings.tier2Rate / 100
+            else -> 
+                coins * settings.tier3Rate / 100
         }
     }
 }

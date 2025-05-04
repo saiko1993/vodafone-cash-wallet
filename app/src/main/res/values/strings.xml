@@ -12,4 +12,13 @@
     <string name="recent_transactions">Recent Transactions</string>
     <string name="recharge_now">Recharge Now</string>
     <string name="accessibility_service_description">Used to automate recharge process in Timo app</string>
+    
+    <!-- Settings Screen Categories -->
+    <string name="general_settings">General Settings</string>
+    <string name="pricing_settings">Pricing Settings</string>
+    <string name="sms_settings">SMS Settings</string>
+    <string name="whatsapp_settings">WhatsApp Settings</string>
+    <string name="timo_app_settings">Timo App Settings</string>
+    <string name="navigation_settings">Navigation Settings</string>
+    <string name="save_settings">Save Settings</string>
 </resources>

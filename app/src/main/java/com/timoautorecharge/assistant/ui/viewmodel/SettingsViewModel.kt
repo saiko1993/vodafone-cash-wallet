@@ -44,36 +44,60 @@ class SettingsViewModel(
         }
     }
     
-    fun updateTierRates(tier1Rate: Double, tier2Rate: Double, tier3Rate: Double) {
+    fun updateTierRates(
+        tier1Rate: Double, 
+        tier2Rate: Double, 
+        tier3Rate: Double,
+        tier1Threshold: Int,
+        tier2Threshold: Int
+    ) {
         viewModelScope.launch {
             val currentSettings = settings.value
             settingsRepository.updateSettings(
                 currentSettings.copy(
                     tier1Rate = tier1Rate,
                     tier2Rate = tier2Rate,
-                    tier3Rate = tier3Rate
+                    tier3Rate = tier3Rate,
+                    tier1Threshold = tier1Threshold,
+                    tier2Threshold = tier2Threshold
                 )
             )
         }
     }
     
-    fun updateSmsTemplate(template: String) {
+    fun updateSmsSettings(
+        template: String,
+        senderNumbers: List<String>,
+        matchByLastDigits: Int,
+        paymentTimeoutMinutes: Int
+    ) {
         viewModelScope.launch {
             val currentSettings = settings.value
             settingsRepository.updateSettings(
                 currentSettings.copy(
-                    vodafoneSmsTemplate = template
+                    vodafoneSmsTemplate = template,
+                    vodafoneSenderNumbers = senderNumbers,
+                    smsMatchByLastDigits = matchByLastDigits,
+                    paymentTimeoutMinutes = paymentTimeoutMinutes
                 )
             )
         }
     }
     
-    fun updateVodafoneSenderNumbers(senderNumbers: List<String>) {
+    fun updateWhatsAppSettings(
+        rechargeRequestPattern: String,
+        paymentInstructionsTemplate: String,
+        paymentConfirmationTemplate: String,
+        rechargeConfirmationTemplate: String
+    ) {
         viewModelScope.launch {
             val currentSettings = settings.value
             settingsRepository.updateSettings(
                 currentSettings.copy(
-                    vodafoneSenderNumbers = senderNumbers
+                    whatsappRechargeRequestPattern = rechargeRequestPattern,
+                    whatsappPaymentInstructionsTemplate = paymentInstructionsTemplate,
+                    whatsappPaymentConfirmationTemplate = paymentConfirmationTemplate,
+                    whatsappRechargeConfirmationTemplate = rechargeConfirmationTemplate
                 )
             )
         }
@@ -95,6 +119,23 @@ class SettingsViewModel(
                     timoIdInputId = timoIdInputId,
                     coinQuantityInputId = coinQuantityInputId,
                     confirmButtonId = confirmButtonId
+                )
+            )
+        }
+    }
+    
+    fun updateNavigationSettings(
+        navigationDelayMs: Long,
+        maxNavigationRetries: Int,
+        navigationTimeoutMs: Long
+    ) {
+        viewModelScope.launch {
+            val currentSettings = settings.value
+            settingsRepository.updateSettings(
+                currentSettings.copy(
+                    navigationDelayMs = navigationDelayMs,
+                    maxNavigationRetries = maxNavigationRetries,
+                    navigationTimeoutMs = navigationTimeoutMs
                 )
             )
         }
