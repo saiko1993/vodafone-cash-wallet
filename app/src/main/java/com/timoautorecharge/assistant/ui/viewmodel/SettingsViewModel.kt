@@ -1,17 +1,25 @@
 package com.timoautorecharge.assistant.ui.viewmodel
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings as AndroidSettings
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.timoautorecharge.assistant.data.model.Settings
+import com.timoautorecharge.assistant.data.model.UiElementInfo
 import com.timoautorecharge.assistant.data.repository.SettingsRepository
+import com.timoautorecharge.assistant.service.ElementSelectorService
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class SettingsViewModel(
+    private val application: Application,
     private val settingsRepository: SettingsRepository
-) : ViewModel() {
+) : AndroidViewModel(application) {
     
     val settings: StateFlow<Settings> = settingsRepository
         .getSettings()
@@ -139,5 +147,40 @@ class SettingsViewModel(
                 )
             )
         }
+    }
+    
+    /**
+     * Launches the element selector for selecting a UI element.
+     *
+     * @param elementType The type of element to select (button or input field)
+     * @param packageName The package name of the target app
+     * @param elementKey The key for the target element in settings
+     */
+    fun launchElementSelector(
+        elementType: UiElementInfo.ElementType,
+        packageName: String,
+        elementKey: String
+    ) {
+        // Check if we have overlay permission
+        if (!ElementSelectorService.hasOverlayPermission(application)) {
+            // Request overlay permission
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val intent = Intent(
+                    AndroidSettings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:${application.packageName}")
+                )
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                application.startActivity(intent)
+            }
+            return
+        }
+        
+        // Launch the element selector service
+        ElementSelectorService.startSelector(
+            application,
+            elementType,
+            packageName,
+            elementKey
+        )
     }
 }

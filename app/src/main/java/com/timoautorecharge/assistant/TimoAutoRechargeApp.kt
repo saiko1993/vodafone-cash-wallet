@@ -73,9 +73,9 @@ class TimoAutoRechargeApp : Application() {
         // Utilities
         single { CoinCalculator(get()) }
         single { NotificationService(get(), get()) }
-        single { SmsTemplateManager(get()) }
-        single { WhatsAppTemplateManager(get()) }
-        single { TimoNavigationTemplateManager(get()) }
+        single { SmsTemplateManager(get(), get()) }
+        single { WhatsAppTemplateManager(get(), get()) }
+        single { TimoNavigationTemplateManager(get(), get()) }
         
         // Services
         single { WhatsAppAccessibilityService() }
@@ -92,9 +92,10 @@ class TimoAutoRechargeApp : Application() {
         single { 
             SmsService(
                 context = get(),
+                transactionRepository = get(),
                 settingsRepository = get(),
                 logRepository = get(),
-                templateManager = get()
+                notificationService = get()
             ) 
         }
         single { 
@@ -114,7 +115,7 @@ class TimoAutoRechargeApp : Application() {
         worker { RechargeWorker(get(), get()) }
         
         // ViewModels
-        viewModel { MainViewModel(get(), get(), get()) }
-        viewModel { SettingsViewModel(get()) }
+        viewModel { MainViewModel(get(), get(), get(), get(), get(), get()) }
+        viewModel { SettingsViewModel(get(), get()) }
     }
 }

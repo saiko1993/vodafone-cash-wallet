@@ -6,11 +6,13 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.timoautorecharge.assistant.R
+import com.timoautorecharge.assistant.data.model.UiElementInfo
 import com.timoautorecharge.assistant.ui.viewmodel.SettingsViewModel
 
 @Composable
@@ -261,39 +263,111 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
             
             Spacer(modifier = Modifier.height(8.dp))
             
-            OutlinedTextField(
-                value = rechargeButtonId,
-                onValueChange = { rechargeButtonId = it },
-                label = { Text("Recharge Button ID") },
-                modifier = Modifier.fillMaxWidth()
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = rechargeButtonId,
+                    onValueChange = { rechargeButtonId = it },
+                    label = { Text("Recharge Button ID") },
+                    modifier = Modifier.weight(1f)
+                )
+                
+                Spacer(modifier = Modifier.width(8.dp))
+                
+                Button(
+                    onClick = { viewModel.launchElementSelector(
+                        UiElementInfo.ElementType.BUTTON,
+                        timoPackageName,
+                        "rechargeButtonId"
+                    ) },
+                    modifier = Modifier.padding(top = 8.dp)
+                ) {
+                    Text(stringResource(R.string.select_button))
+                }
+            }
             
             Spacer(modifier = Modifier.height(8.dp))
             
-            OutlinedTextField(
-                value = timoIdInputId,
-                onValueChange = { timoIdInputId = it },
-                label = { Text("Timo ID Input Field ID") },
-                modifier = Modifier.fillMaxWidth()
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = timoIdInputId,
+                    onValueChange = { timoIdInputId = it },
+                    label = { Text("Timo ID Input Field ID") },
+                    modifier = Modifier.weight(1f)
+                )
+                
+                Spacer(modifier = Modifier.width(8.dp))
+                
+                Button(
+                    onClick = { viewModel.launchElementSelector(
+                        UiElementInfo.ElementType.INPUT_FIELD,
+                        timoPackageName,
+                        "timoIdInputId"
+                    ) },
+                    modifier = Modifier.padding(top = 8.dp)
+                ) {
+                    Text(stringResource(R.string.select_input_field))
+                }
+            }
             
             Spacer(modifier = Modifier.height(8.dp))
             
-            OutlinedTextField(
-                value = coinQuantityInputId,
-                onValueChange = { coinQuantityInputId = it },
-                label = { Text("Coin Quantity Input Field ID") },
-                modifier = Modifier.fillMaxWidth()
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = coinQuantityInputId,
+                    onValueChange = { coinQuantityInputId = it },
+                    label = { Text("Coin Quantity Input Field ID") },
+                    modifier = Modifier.weight(1f)
+                )
+                
+                Spacer(modifier = Modifier.width(8.dp))
+                
+                Button(
+                    onClick = { viewModel.launchElementSelector(
+                        UiElementInfo.ElementType.INPUT_FIELD,
+                        timoPackageName,
+                        "coinQuantityInputId"
+                    ) },
+                    modifier = Modifier.padding(top = 8.dp)
+                ) {
+                    Text(stringResource(R.string.select_input_field))
+                }
+            }
             
             Spacer(modifier = Modifier.height(8.dp))
             
-            OutlinedTextField(
-                value = confirmButtonId,
-                onValueChange = { confirmButtonId = it },
-                label = { Text("Confirm Button ID") },
-                modifier = Modifier.fillMaxWidth()
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = confirmButtonId,
+                    onValueChange = { confirmButtonId = it },
+                    label = { Text("Confirm Button ID") },
+                    modifier = Modifier.weight(1f)
+                )
+                
+                Spacer(modifier = Modifier.width(8.dp))
+                
+                Button(
+                    onClick = { viewModel.launchElementSelector(
+                        UiElementInfo.ElementType.BUTTON,
+                        timoPackageName,
+                        "confirmButtonId"
+                    ) },
+                    modifier = Modifier.padding(top = 8.dp)
+                ) {
+                    Text(stringResource(R.string.select_button))
+                }
+            }
         }
         
         // Navigation Settings Section

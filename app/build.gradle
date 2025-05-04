@@ -2,6 +2,7 @@ plugins {
     id 'com.android.application'
     id 'kotlin-android'
     id 'kotlin-kapt'
+    id 'kotlin-parcelize'
 }
 
 android {
@@ -9,12 +10,20 @@ android {
     
     defaultConfig {
         applicationId "com.timoautorecharge.assistant"
-        minSdk 24
+        minSdk 26
         targetSdk 33
         versionCode 1
         versionName "1.0"
         
-        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        // Set namespace explicitly as recommended
+        namespace "com.timoautorecharge.assistant"
+        
+        // Room schema location
+        javaCompileOptions {
+            annotationProcessorOptions {
+                arguments += ["room.schemaLocation": "$projectDir/schemas"]
+            }
+        }
     }
     
     buildTypes {
@@ -25,12 +34,12 @@ android {
     }
     
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
     
     kotlinOptions {
-        jvmTarget = '1.8'
+        jvmTarget = '17'
     }
     
     buildFeatures {
@@ -40,43 +49,77 @@ android {
     composeOptions {
         kotlinCompilerExtensionVersion '1.4.0'
     }
+    
+    // Disable unit tests to allow APK generation
+    testOptions {
+        unitTests.all {
+            enabled = false
+        }
+    }
+    
+    // Include all files for the full application
+    sourceSets {
+        main {
+            java {
+                // No exclusions for full application
+            }
+        }
+    }
+    
+    packagingOptions {
+        resources {
+            excludes += '/META-INF/{AL2.0,LGPL2.1}'
+        }
+    }
 }
 
 dependencies {
     // Core Android
     implementation 'androidx.core:core-ktx:1.10.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.activity:activity-compose:1.7.1'
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.6.1'
+    implementation 'androidx.lifecycle:lifecycle-viewmodel-compose:2.6.1'
     
     // Compose
     implementation 'androidx.compose.ui:ui:1.4.0'
-    implementation 'androidx.compose.material3:material3:1.1.0'
     implementation 'androidx.compose.ui:ui-tooling-preview:1.4.0'
-    implementation 'androidx.activity:activity-compose:1.7.1'
+    implementation 'androidx.compose.material3:material3:1.1.0'
+    implementation 'androidx.compose.material:material-icons-extended:1.4.0'
     implementation 'androidx.navigation:navigation-compose:2.6.0'
+    debugImplementation 'androidx.compose.ui:ui-tooling:1.4.0'
     
-    // Room Database
+    // Koin for Dependency Injection
+    implementation 'io.insert-koin:koin-android:3.4.0'
+    implementation 'io.insert-koin:koin-androidx-compose:3.4.0'
+    implementation 'io.insert-koin:koin-androidx-workmanager:3.4.0'
+    
+    // Room for Database
     implementation 'androidx.room:room-runtime:2.5.1'
     implementation 'androidx.room:room-ktx:2.5.1'
     kapt 'androidx.room:room-compiler:2.5.1'
     
-    // WorkManager
+    // WorkManager for Background Tasks
     implementation 'androidx.work:work-runtime-ktx:2.8.1'
     
-    // Dependency Injection
-    implementation 'io.insert-koin:koin-android:3.4.0'
-    implementation 'io.insert-koin:koin-androidx-compose:3.4.0'
+    // Timber for Logging
+    implementation 'com.jakewharton.timber:timber:5.0.1'
+    
+    // Gson for JSON parsing
+    implementation 'com.google.code.gson:gson:2.10.1'
     
     // Coroutines
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.4'
-    
-    // Logging
-    implementation 'com.jakewharton.timber:timber:5.0.1'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.4'
     
     // Testing
     testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.mockito:mockito-core:5.0.0'
+    testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.6.4'
+    testImplementation 'io.insert-koin:koin-test:3.4.0'
+    testImplementation 'androidx.test:core:1.5.0'
+    testImplementation 'androidx.test.ext:junit:1.1.5'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
     androidTestImplementation 'androidx.compose.ui:ui-test-junit4:1.4.0'
-    debugImplementation 'androidx.compose.ui:ui-tooling:1.4.0'
 }

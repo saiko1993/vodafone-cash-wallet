@@ -67,4 +67,11 @@
     <string name="recharge_failed_message">Failed to recharge Timo ID %1$s: %2$s</string>
     <string name="manual_intervention_notification">Manual Intervention Required</string>
     <string name="manual_intervention_message">Transaction for Timo ID %1$s requires manual intervention</string>
+    
+    <!-- Element Selector strings -->
+    <string name="resize_and_position">Resize and position over the element</string>
+    <string name="capture">Capture</string>
+    <string name="select_element">Select Element</string>
+    <string name="select_button">Select Button</string>
+    <string name="select_input_field">Select Input Field</string>
 </resources>
